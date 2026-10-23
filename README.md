@@ -108,7 +108,8 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 
 DC 自身容器的更新方式（必须由外部更新器完成）、WUD / Watchtower 现成 compose（`wud.yml`、`watchtower-dc.yml`）、镜像选型与版本能力对照见仓库内《DC自更新方案.md》。
 
-> 镜像提示：官方镜像是 `muuua/docker-copilot`（仓库 xcz1997/dockerCopilot，版本标签有 v2.12.0 ~ v2.14.0）。
+> 镜像提示：官方镜像是 `muuua/docker-copilot`（仓库 [xcz1997/dockerCopilot](https://github.com/xcz1997/dockerCopilot)，版本标签有 v2.12.0 ~ v2.14.0）。
+> 增强版镜像 `l429609201/dockercopilot`（内置自更新旁路容器，支持「更新自己」）的仓库见 [l429609201/dockerCopilot](https://github.com/l429609201/dockerCopilot)。
 > `0nlylty/dockercopilot` 是另一条发布线，内部版本 v2.1.3，缺群组/多环境/服务重启/私有仓库认证等接口，**两线版本号不可比**。
 
 > **加速站**：老版的 `hubURL` 在官方版里不存在，官方版用 `REGISTRY_MIRRORS_ENABLED=true` + `REGISTRY_MIRRORS=registry.linkease.net:5443`（只作用于 DC 管理的业务容器）。
