@@ -51,7 +51,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
   "enabled": true,
   "devices": [
     {
-      "name": "J4125-DC更新",
+      "name": "my-nas",
       "host": "http://192.168.1.100:12712",
       "secret_key": "你的secretKey",
       "updatable": ["moviepilot", "qbittorrent"],
