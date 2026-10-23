@@ -102,7 +102,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 
 ## 来源
 
-**DC 自身容器如何更新**：只有增强版镜像 `l429609201/dockercopilot` 内置了自更新 helper，能自己停旧建新；其他镜像更新自己的第一步就是停掉自己，没有进程接手重建，因此不支持——本插件因此不再集成任何外部更新器（早期版本的 WUD / Watchtower 支持已移除）。
+**DC 自身容器如何更新**：只有增强版镜像 `l429609201/dockercopilot` 内置了自更新 helper，能自己停旧建新；其他镜像更新自己的第一步就是停掉自己，没有进程接手重建，因此不支持。
 
 > 镜像提示：官方镜像是 `muuua/docker-copilot`（仓库 [xcz1997/dockerCopilot](https://github.com/xcz1997/dockerCopilot)，版本标签有 v2.12.0 ~ v2.14.0）。
 > 增强版镜像 `l429609201/dockercopilot`（内置自更新旁路容器，支持「更新自己」）的仓库见 [l429609201/dockerCopilot](https://github.com/l429609201/dockerCopilot)。
@@ -111,4 +111,4 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 > **加速站**：老版的 `hubURL` 在官方版里不存在，官方版用 `REGISTRY_MIRRORS_ENABLED=true` + `REGISTRY_MIRRORS=registry.linkease.net:5443`（只作用于 DC 管理的业务容器）。
 > DC 本身的加速要写在镜像名上：`image: registry.linkease.net:5443/l429609201/dockercopilot:latest`，或给 daemon 配 `registry-mirrors`。现成文件见 `compose-官方版.yml`。
 
-移植自 gxterry 的 V1 插件 `dockercopilothelper`（DC助手 v1.1.2），按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑保持不变：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
+灵感来自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
