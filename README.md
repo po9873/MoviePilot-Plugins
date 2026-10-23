@@ -112,4 +112,4 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 > DC 本身的加速要写在镜像名上：`image: <你的加速站地址>/l429609201/dockercopilot:latest`，或给 daemon 配 `registry-mirrors`。现成文件见 `compose-官方版.yml`。
 > 本插件的「镜像加速前缀」配置项同理，填你自己的加速站地址即可（不填就是直连）。
 
-灵感来自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
+参考自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
