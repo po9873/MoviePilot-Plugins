@@ -1,5 +1,7 @@
 # MoviePilot-Plugins（V3 · DC助手V3）
 
+> **不用 MoviePilot？** 也有独立 Docker 版管理面板：[po9873/dc-panel](https://github.com/po9873/dc-panel)（`ghcr.io/po9873/dc-panel` 镜像，功能对齐，详见其 README）。
+
 MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.0（V3 版基线）。
 
 ## 安装方法（通过 MoviePilot 插件市场）
