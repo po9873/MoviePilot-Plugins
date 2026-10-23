@@ -32,7 +32,6 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 - **DC 程序自更新**：远程触发 DockerCopilot 自身的「更新程序」（容器内二进制热替换，不重建容器）。这是 DC 自己的 `/api/update` 接口，**所有镜像通用**——但它只是换二进制，不是换镜像，镜像有新版时仍需要「DC 容器自更新」
 - **DC 容器自更新**：**仅支持增强版镜像 `l429609201/dockercopilot`**（内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，拉镜像重建一步到位，**不需要任何外部组件**。
   其他镜像（官方 `muuua/docker-copilot`、`0nlylty/dockercopilot`）**不支持自更新**——DC 更新任何容器的第一步就是停掉目标容器，停掉自己后没有进程接手重建。这类设备数据页不显示自更新按钮（置灰并写明原因），解决办法就是换成增强版镜像。
-- **镜像加速（可选）**：配置页填一个「镜像加速前缀」，更新时插件自动把 `linuxserver/qbittorrent:latest` 改写成 `前缀/linuxserver/qbittorrent:latest` 再交给 DC。DC 自身没有加速配置项，所以要么改宿主机 daemon 的 registry-mirrors，要么用这个开关绕开
 - **TAG 异常自愈**：容器 `usingImage` 为空或为 `sha256:` 时，先删镜像按 ID 重拉，再用创建镜像名更新
 - **数据页**：彩色统计 + 每设备「待更新」明细 + 原生展开查看全部容器 + 更新分布饼图 + 更新记录（**只显示当天**，标题带累计与历史跨度）
 - **连不上要说人话**：某台 DC 连不上时，配置页下拉会显示「⚠ 读不到容器：端口拒绝连接…」而不是空白，
@@ -73,7 +72,6 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
     "dc_update_notify": true,
     "interval": 10,
     "interval_limit": 6,
-    "hub_prefix": "mirror.example.com:5000"
   }
 }
 ```
@@ -107,10 +105,5 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 > 镜像提示：官方镜像是 `muuua/docker-copilot`（仓库 [xcz1997/dockerCopilot](https://github.com/xcz1997/dockerCopilot)，版本标签有 v2.12.0 ~ v2.14.0）。
 > 增强版镜像 `l429609201/dockercopilot`（内置自更新旁路容器，支持「更新自己」）的仓库见 [l429609201/dockerCopilot](https://github.com/l429609201/dockerCopilot)。
 > `0nlylty/dockercopilot` 是另一条发布线，内部版本 v2.1.3，缺群组/多环境/服务重启/私有仓库认证等接口，**两线版本号不可比**。
-
-> **镜像加速（可选）**：
-> · DC 管理业务容器时加速 → 给 DC 容器加环境变量 `REGISTRY_MIRRORS_ENABLED=true` + `REGISTRY_MIRRORS=<你的加速站地址>`；
-> · 加速 DC 自己的镜像 → 写在镜像名上 `image: <你的加速站地址>/l429609201/dockercopilot:latest`，或给 daemon 配 `registry-mirrors`；
-> · 本插件的「镜像加速前缀」配置项作用相同，留空即直连。现成文件见 `compose-官方版.yml`。
 
 参考自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
