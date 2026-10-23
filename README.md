@@ -73,7 +73,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
     "dc_update_notify": true,
     "interval": 10,
     "interval_limit": 6,
-    "hub_prefix": "registry.linkease.net:5443"
+    "hub_prefix": "mirror.example.com:5000"
   }
 }
 ```
@@ -108,7 +108,8 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 > 增强版镜像 `l429609201/dockercopilot`（内置自更新旁路容器，支持「更新自己」）的仓库见 [l429609201/dockerCopilot](https://github.com/l429609201/dockerCopilot)。
 > `0nlylty/dockercopilot` 是另一条发布线，内部版本 v2.1.3，缺群组/多环境/服务重启/私有仓库认证等接口，**两线版本号不可比**。
 
-> **加速站**：老版的 `hubURL` 在官方版里不存在，官方版用 `REGISTRY_MIRRORS_ENABLED=true` + `REGISTRY_MIRRORS=registry.linkease.net:5443`（只作用于 DC 管理的业务容器）。
-> DC 本身的加速要写在镜像名上：`image: registry.linkease.net:5443/l429609201/dockercopilot:latest`，或给 daemon 配 `registry-mirrors`。现成文件见 `compose-官方版.yml`。
+> **镜像加速（可选）**：老版的 `hubURL` 在官方版里不存在，官方版用 `REGISTRY_MIRRORS_ENABLED=true` + `REGISTRY_MIRRORS=<你的加速站地址>`（只作用于 DC 管理的业务容器）。
+> DC 本身的加速要写在镜像名上：`image: <你的加速站地址>/l429609201/dockercopilot:latest`，或给 daemon 配 `registry-mirrors`。现成文件见 `compose-官方版.yml`。
+> 本插件的「镜像加速前缀」配置项同理，填你自己的加速站地址即可（不填就是直连）。
 
 灵感来自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
