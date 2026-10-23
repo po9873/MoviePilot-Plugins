@@ -27,9 +27,8 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 - **自动更新**：按周期对所选容器执行 DC 一键更新，可跟踪进度
 - **自动备份**：按周期对所有设备执行容器配置备份
 - **DC 程序自更新**：远程触发各台 DockerCopilot 自身的「更新程序」（容器内二进制热替换）
-- **DC 容器自更新**：分两种情况，插件会自动识别：
-  - **增强版 / 魔改版**（如 `l429609201/dockercopilot`，内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，**不需要任何外部组件**，拉镜像重建一步到位。
-  - **原版**（`muuua/docker-copilot` / `0nlylty/dockercopilot`）→ DC 自己更新不了自己（更新第一步就是停自己），必须外部代劳：支持 **WUD（带 WebUI，推荐）** 与 **Watchtower（只有 API）**，插件自动识别是哪种；WUD 侧走 `POST /api/containers/{id}/triggers/docker/local`，只更新 DC 一个容器，不碰其它容器。
+- **DC 容器自更新**：**仅支持增强版镜像 `l429609201/dockercopilot`**（内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，拉镜像重建一步到位，**不需要任何外部组件**。
+  其他镜像（官方 `muuua/docker-copilot`、`0nlylty/dockercopilot`）**不支持自更新**——DC 更新任何容器的第一步就是停掉目标容器，停掉自己后没有进程接手重建。这类设备数据页不显示自更新按钮（置灰并写明原因），解决办法就是换成增强版镜像。
 - **镜像加速（可选）**：配置页填一个「镜像加速前缀」，更新时插件自动把 `linuxserver/qbittorrent:latest` 改写成 `前缀/linuxserver/qbittorrent:latest` 再交给 DC。DC 自己没有加速配置项（原版的 hubURL 被这个魔改版去掉了），所以要么改宿主机 daemon 的 registry-mirrors，要么用这个开关绕开
 - **TAG 异常自愈**：容器 `usingImage` 为空或为 `sha256:` 时，先删镜像按 ID 重拉，再用创建镜像名更新
 - **数据页**：彩色统计 + 每设备「待更新」明细 + 原生展开查看全部容器 + 更新分布饼图 + 更新记录（**只显示当天**，标题带累计与历史跨度）
