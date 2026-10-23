@@ -32,7 +32,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 - **DC 程序自更新**：远程触发 DockerCopilot 自身的「更新程序」（容器内二进制热替换，不重建容器）。这是 DC 自己的 `/api/update` 接口，**所有镜像通用**——但它只是换二进制，不是换镜像，镜像有新版时仍需要「DC 容器自更新」
 - **DC 容器自更新**：**仅支持增强版镜像 `l429609201/dockercopilot`**（内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，拉镜像重建一步到位，**不需要任何外部组件**。
   其他镜像（官方 `muuua/docker-copilot`、`0nlylty/dockercopilot`）**不支持自更新**——DC 更新任何容器的第一步就是停掉目标容器，停掉自己后没有进程接手重建。这类设备数据页不显示自更新按钮（置灰并写明原因），解决办法就是换成增强版镜像。
-- **镜像加速（可选）**：配置页填一个「镜像加速前缀」，更新时插件自动把 `linuxserver/qbittorrent:latest` 改写成 `前缀/linuxserver/qbittorrent:latest` 再交给 DC。DC 自己没有加速配置项（原版的 hubURL 被这个魔改版去掉了），所以要么改宿主机 daemon 的 registry-mirrors，要么用这个开关绕开
+- **镜像加速（可选）**：配置页填一个「镜像加速前缀」，更新时插件自动把 `linuxserver/qbittorrent:latest` 改写成 `前缀/linuxserver/qbittorrent:latest` 再交给 DC。DC 自身没有加速配置项，所以要么改宿主机 daemon 的 registry-mirrors，要么用这个开关绕开
 - **TAG 异常自愈**：容器 `usingImage` 为空或为 `sha256:` 时，先删镜像按 ID 重拉，再用创建镜像名更新
 - **数据页**：彩色统计 + 每设备「待更新」明细 + 原生展开查看全部容器 + 更新分布饼图 + 更新记录（**只显示当天**，标题带累计与历史跨度）
 - **连不上要说人话**：某台 DC 连不上时，配置页下拉会显示「⚠ 读不到容器：端口拒绝连接…」而不是空白，
