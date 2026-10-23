@@ -2,6 +2,19 @@
 
 MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.0（V3 版基线）。
 
+## 安装方法（通过 MoviePilot 插件市场）
+
+1. 打开 MoviePilot → **设定 → 插件 → 插件市场**
+2. 点「插件市场设置」，在输入框填入本仓库地址并添加：
+   ```
+   https://github.com/po9873/MoviePilot-Plugins/
+   ```
+3. 保存后回到插件市场，刷新列表，搜索 **DC助手V3** → 安装
+4. 以后有新版本，在插件页点「更新」即可自动升级（版本号以 `package.v3.json` 为准）
+
+> 要求：MoviePilot **V3**（`system_version >= 3.0.0`）。V2 版 MoviePilot 无法安装本插件。
+> 手动安装：下载本仓库 `plugins.v3/dockercopilothelper` 打包为 zip（根目录即插件目录），在 MoviePilot「插件 → 本地安装」导入。
+
 ## 功能
 
 配合 [DockerCopilot](https://github.com/xcz1997/dockerCopilot)（镜像 `muuua/docker-copilot`）使用，**一个插件实例联动局域网全部 DC 实例**：
