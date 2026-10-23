@@ -52,14 +52,14 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
   "devices": [
     {
       "name": "J4125-DC更新",
-      "host": "http://192.168.6.244:12712",
+      "host": "http://192.168.1.100:12712",
       "secret_key": "你的secretKey",
       "updatable": ["moviepilot", "qbittorrent"],
       "auto_update": ["moviepilot"],
-      "watchtower_url": "http://192.168.6.244:3000",
+      "watchtower_url": "http://192.168.1.100:3000",
       "watchtower_token": "WUD的wud_开头Token或密码",
       "watchtower_user": "",
-      "updater_url": "http://192.168.6.244:3000",
+      "updater_url": "http://192.168.1.100:3000",
       "updater_secret": "WUD的wud_开头Token或密码",
       "updater_user": ""
     }
