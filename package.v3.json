@@ -1,0 +1,16 @@
+{
+  "DockerCopilotHelper": {
+    "name": "DC助手V3",
+    "description": "多台 DockerCopilot 统一管理：更新通知、自动更新、自动备份、配置导入导出。",
+    "labels": "Docker,容器,DC",
+    "version": "3.0.0",
+    "icon": "https://raw.githubusercontent.com/gxterry/MoviePilot-Plugins/main/icons/Docker_Copilot.png",
+    "author": "po9873",
+    "level": 1,
+    "release": true,
+    "history": {
+      "v3.0.0": "V3版基线：多DC设备管理、按设备勾选容器、更新通知/自动更新/自动备份/DC程序自更新（PUT /api/program，兼容旧 /api/update）；数据页统计+饼图+合并记录；每设备只列待更新并可原生展开查看全部容器；更新按钮与展开/收起改为原生HTML（不依赖前端事件）；配置导出为 dc-helper 可移植格式（devices/notify，含 updater_* 字段），新旧格式均可导入；TAG异常自动删镜像重拉；DC自身容器显示为「不能自更新」并硬拦截；DC自身容器更新支持 WUD（WebUI，自动识别 /api/containers）与 Watchtower 两种后端。"
+    },
+    "system_version": ">=3.0.0"
+  }
+}
