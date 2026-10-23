@@ -19,14 +19,17 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 
 ## 功能
 
-配合 [DockerCopilot](https://github.com/xcz1997/dockerCopilot)（镜像 `muuua/docker-copilot`）使用，**一个插件实例联动局域网全部 DC 实例**：
+配合 [DockerCopilot](https://github.com/xcz1997/dockerCopilot) 使用，**一个插件实例联动局域网全部 DC 实例**：
+
+> **镜像兼容性**：任何 DockerCopilot 镜像（官方原版 `muuua/docker-copilot`、增强版 `l429609201/dockercopilot`、`0nlylty/dockercopilot`）都能被本插件管理——加设备、看容器、更新业务容器全部可用。
+> 唯一区别是「更新 DC 自己」：**只有增强版 `l429609201/dockercopilot` 支持**，其余镜像不支持（详见下面「DC 容器自更新」）。
 
 - **多设备**：每台 DC 填一组「服务器地址 + secretKey」，保存后自动出现下一行，想加几台加几台
 - **按设备独立勾选容器**：更新通知 / 自动更新 / 各自独立的容器清单
 - **更新通知**：按周期检查所选容器更新并发送 MP 通知，标题标注来源设备
 - **自动更新**：按周期对所选容器执行 DC 一键更新，可跟踪进度
 - **自动备份**：按周期对所有设备执行容器配置备份
-- **DC 程序自更新**：远程触发各台 DockerCopilot 自身的「更新程序」（容器内二进制热替换）
+- **DC 程序自更新**：远程触发 DockerCopilot 自身的「更新程序」（容器内二进制热替换，不重建容器）。这是 DC 自己的 `/api/update` 接口，**所有镜像通用**——但它只是换二进制，不是换镜像，镜像有新版时仍需要「DC 容器自更新」
 - **DC 容器自更新**：**仅支持增强版镜像 `l429609201/dockercopilot`**（内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，拉镜像重建一步到位，**不需要任何外部组件**。
   其他镜像（官方 `muuua/docker-copilot`、`0nlylty/dockercopilot`）**不支持自更新**——DC 更新任何容器的第一步就是停掉目标容器，停掉自己后没有进程接手重建。这类设备数据页不显示自更新按钮（置灰并写明原因），解决办法就是换成增强版镜像。
 - **镜像加速（可选）**：配置页填一个「镜像加速前缀」，更新时插件自动把 `linuxserver/qbittorrent:latest` 改写成 `前缀/linuxserver/qbittorrent:latest` 再交给 DC。DC 自己没有加速配置项（原版的 hubURL 被这个魔改版去掉了），所以要么改宿主机 daemon 的 registry-mirrors，要么用这个开关绕开
