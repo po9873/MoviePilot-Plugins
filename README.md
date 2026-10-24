@@ -21,17 +21,12 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 
 配合 [DockerCopilot](https://github.com/xcz1997/dockerCopilot) 使用，**一个插件实例联动局域网全部 DC 实例**：
 
-> **镜像兼容性**：任何 DockerCopilot 镜像（官方原版 `muuua/docker-copilot`、增强版 `l429609201/dockercopilot`、`0nlylty/dockercopilot`）都能被本插件管理——加设备、看容器、更新业务容器全部可用。
-> 唯一区别是「更新 DC 自己」：**只有增强版 `l429609201/dockercopilot` 支持**，其余镜像不支持（详见下面「DC 容器自更新」）。
-
 - **多设备**：每台 DC 填一组「服务器地址 + secretKey」，保存后自动出现下一行，想加几台加几台
 - **按设备独立勾选容器**：更新通知 / 自动更新 / 各自独立的容器清单
 - **更新通知**：按周期检查所选容器更新并发送 MP 通知，标题标注来源设备
 - **自动更新**：按周期对所选容器执行 DC 一键更新，可跟踪进度
 - **自动备份**：按周期对所有设备执行容器配置备份
 - **DC 程序自更新**：远程触发 DockerCopilot 自身的「更新程序」（容器内二进制热替换，不重建容器）。这是 DC 自己的 `/api/update` 接口，**所有镜像通用**——但它只是换二进制，不是换镜像，镜像有新版时仍需要「DC 容器自更新」
-- **DC 容器自更新**：**仅支持增强版镜像 `l429609201/dockercopilot`**（内置 `-selfupdate-helper` 旁路容器）→ 数据页点「自更新DC容器」直接调 `POST /api/container/{自身id}/update`，拉镜像重建一步到位，**不需要任何外部组件**。
-  其他镜像（官方 `muuua/docker-copilot`、`0nlylty/dockercopilot`）**不支持自更新**——DC 更新任何容器的第一步就是停掉目标容器，停掉自己后没有进程接手重建。这类设备数据页不显示自更新按钮（置灰并写明原因），解决办法就是换成增强版镜像。
 - **TAG 异常自愈**：容器 `usingImage` 为空或为 `sha256:` 时，先删镜像按 ID 重拉，再用创建镜像名更新
 - **数据页**：彩色统计 + 每设备「待更新」明细 + 原生展开查看全部容器 + 更新分布饼图 + 更新记录（**只显示当天**，标题带累计与历史跨度）
 - **连不上要说人话**：某台 DC 连不上时，配置页下拉会显示「⚠ 读不到容器：端口拒绝连接…」而不是空白，
@@ -89,7 +84,6 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 | GET | `/api/v1/plugin/DockerCopilotHelper/update_now` | 原生链接触发更新，结果显示在独立页面 |
 | GET | `/api/v1/plugin/DockerCopilotHelper/download_config?apikey=` | 导出配置（附件下载） |
 | POST | `/api/v1/plugin/DockerCopilotHelper/upload_config?apikey=` | 导入配置（multipart 上传） |
-| GET | `/api/v1/plugin/DockerCopilotHelper/update_dc_container?apikey=&env=` | 更新 DC 自身容器（仅增强版镜像 l429609201/dockercopilot 支持） |
 | POST | `/api/v1/plugin/DockerCopilotHelper/toggle_expand` | 展开/收起设备容器（保留接口） |
 
 ## 安装
@@ -99,11 +93,5 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 仓库安装：在 `PLUGIN_MARKET` 添加本仓库地址，要求 main 分支且目录结构为 `plugins.v3/` + `package.v3.json`。
 
 ## 来源
-
-**DC 自身容器如何更新**：只有增强版镜像 `l429609201/dockercopilot` 内置了自更新 helper，能自己停旧建新；其他镜像更新自己的第一步就是停掉自己，没有进程接手重建，因此不支持。
-
-> 镜像提示：官方镜像是 `muuua/docker-copilot`（仓库 [xcz1997/dockerCopilot](https://github.com/xcz1997/dockerCopilot)，版本标签有 v2.12.0 ~ v2.14.0）。
-> 增强版镜像 `l429609201/dockercopilot`（内置自更新旁路容器，支持「更新自己」）的仓库见 [l429609201/dockerCopilot](https://github.com/l429609201/dockerCopilot)。
-> `0nlylty/dockercopilot` 是另一条发布线，内部版本 v2.1.3，缺群组/多环境/服务重启/私有仓库认证等接口，**两线版本号不可比**。
 
 参考自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
