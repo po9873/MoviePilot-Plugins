@@ -1,6 +1,6 @@
 # MoviePilot-Plugins（V3 · DC助手V3）
 
-> **不用 MoviePilot？** 也有独立 Docker 版管理面板：[po9873/dc-panel](https://github.com/po9873/dc-panel)（`ghcr.io/po9873/dc-panel` 镜像，功能对齐，详见其 README）。
+> **不用 MoviePilot？** 也可以部署独立 Docker 管理面板；镜像地址和仓库地址请以你的实际发布位置为准。
 
 MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.0（V3 版基线）。
 
@@ -9,7 +9,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 1. 打开 MoviePilot → **设定 → 插件 → 插件市场**
 2. 点「插件市场设置」，在输入框填入本仓库地址并添加：
    ```
-   https://github.com/po9873/MoviePilot-Plugins/
+   https://github.com/<your-user>/MoviePilot-Plugins/
    ```
 3. 保存后回到插件市场，刷新列表，搜索 **DC助手V3** → 安装
 4. 以后有新版本，在插件页点「更新」即可自动升级（版本号以 `package.v3.json` 为准）
@@ -26,7 +26,6 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 - **更新通知**：按周期检查所选容器更新并发送 MP 通知，标题标注来源设备
 - **自动更新**：按周期对所选容器执行 DC 一键更新，可跟踪进度
 - **自动备份**：按周期对所有设备执行容器配置备份
-- **DC 程序自更新**：远程触发 DockerCopilot 自身的「更新程序」（容器内二进制热替换，不重建容器）。这是 DC 自己的 `/api/update` 接口，**所有镜像通用**——但它只是换二进制，不是换镜像，镜像有新版时仍需要「DC 容器自更新」
 - **TAG 异常自愈**：容器 `usingImage` 为空或为 `sha256:` 时，先删镜像按 ID 重拉，再用创建镜像名更新
 - **数据页**：彩色统计 + 每设备「待更新」明细 + 原生展开查看全部容器 + 更新分布饼图 + 更新记录（**只显示当天**，标题带累计与历史跨度）
 - **连不上要说人话**：某台 DC 连不上时，配置页下拉会显示「⚠ 读不到容器：端口拒绝连接…」而不是空白，
@@ -36,7 +35,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 
 ## 配置导出格式（可移植，与独立 Docker 面板互通）
 
-导出的 JSON 使用固定 schema，插件版与**独立 Docker 面板 [dc-panel](https://github.com/po9873/dc-panel)** 共用同一份结构——插件「导出配置」的文件可直接在 dc-panel「数据迁移 → 导入设备」使用，dc-panel「导出设备」的文件也能在本插件导入，两边自由搬家：
+导出的 JSON 使用固定 schema，插件版与独立 Docker 面板共用同一份结构——插件「导出配置」的文件可直接在面板「数据迁移 → 导入设备」使用，面板「导出设备」的文件也能在本插件导入，两边自由搬家：
 
 ```json
 {
@@ -48,7 +47,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
   "devices": [
     {
       "name": "my-nas",
-      "host": "http://192.168.1.100:12712",
+      "host": "http://dc-host.example:12712",
       "secret_key": "你的secretKey",
       "updatable": ["moviepilot", "qbittorrent"],
       "auto_update": ["moviepilot"]
