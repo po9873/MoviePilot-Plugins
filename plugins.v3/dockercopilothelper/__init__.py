@@ -50,7 +50,7 @@ class DockerCopilotHelper(_PluginBase):
     # 插件版本
     plugin_version = "3.0.0"
     # 插件作者
-    plugin_author = "po9873"
+    plugin_author = "Plugin Maintainers"
     # 作者主页
     author_url = ""
     # 插件配置项ID前缀
@@ -733,7 +733,7 @@ class DockerCopilotHelper(_PluginBase):
                 "endpoint": self.api_update_dc_container,
                 "methods": ["GET"],
                 "auth": "apikey",
-                "summary": "更新DC自身容器（仅增强版镜像 l429609201/dockercopilot 支持）",
+                "summary": "更新DC自身容器（需后端支持内置自更新）",
             },
             {
                 "path": "/update_now",
@@ -781,10 +781,10 @@ class DockerCopilotHelper(_PluginBase):
 
     def __probe_features(self, env: Dict[str, str], refresh: bool = False) -> Dict[str, Any]:
         """
-        探测这台 DC 是「原版」还是「增强版（魔改）」。
+        探测这台 DC 是否提供扩展能力。
 
-        判据：增强版额外暴露 /api/docker/hosts（多机管理），原版 v2.1.3 没有这个路由（404）。
-        这类增强版（如 l429609201/dockercopilot）后端带 StartHelperContainer/SelfUpdate：
+        判据：后端额外暴露 /api/docker/hosts（多机管理），基础版本没有这个路由（404）。
+        如果后端同时提供 StartHelperContainer/SelfUpdate：
         点「更新」自身容器时会另起一个 <容器名>-selfupdate-helper 旁路容器，
         由它去停旧容器、按新镜像建新容器、删旧容器，所以它能自己更新自己。
         其他镜像没有这套，停掉自己就没人接手，因此无法直接更新自己。
@@ -835,7 +835,7 @@ class DockerCopilotHelper(_PluginBase):
 
     def __native_self_update(self, env: Dict[str, str]) -> Tuple[bool, str]:
         """
-        走增强版 DC 自己的更新接口更新「它自己」。
+        走后端提供的内置更新接口更新「它自己」。
         DC 会起 <容器名>-selfupdate-helper 旁路容器完成 pull/stop/create/start/remove，
         本进程被停掉后由 helper 接着干，所以这个请求很可能收不到正常返回（连接被切断）——
         连接中断/超时一律视为「已触发」，而不是失败。
@@ -908,12 +908,12 @@ class DockerCopilotHelper(_PluginBase):
         """
         更新「DC 自己的容器」。
 
-        仅支持带内置自更新的镜像：l429609201/dockercopilot（仓库
-        https://github.com/l429609201/dockerCopilot）。这类 DC 后端带
+        仅支持带内置自更新的镜像：带内置自更新能力的 DockerCopilot 后端（仓库
+        对应后端项目地址）。这类 DC 后端带
         StartHelperContainer，更新自身时会另起 <容器名>-selfupdate-helper
         旁路容器，由它停旧建新，因此直接 POST /api/container/{自身id}/update 即可。
 
-        其他镜像（如官方 muuua/docker-copilot）不支持：其更新流程第一步就是
+        其他镜像（如基础版 DockerCopilot）不支持：其更新流程第一步就是
         停掉目标容器，停掉自己后没有进程接手重建——数据页对这类设备不显示自更新按钮。
         """
         if not env:
@@ -923,19 +923,15 @@ class DockerCopilotHelper(_PluginBase):
                 continue
             feat = self.__probe_features(e)
             if feat.get("native_selfupdate"):
-                logger.info(f"DC助手-环境[{env}]检测到增强版DC（{feat.get('version') or '?'}），走内置自更新")
+                logger.info(f"DC助手-环境[{env}]检测到支持内置自更新的 DC（{feat.get('version') or '?'}），走内置自更新")
                 ok, msg = self.__native_self_update(e)
                 title = ("更新DC容器 · 内置自更新 · " if ok else "更新DC容器失败 · 内置自更新 · ") + env
                 return self.__result_page(title, ok, msg)
             return self.__result_page(
                 "更新DC容器", False,
-                "这台设备的 DockerCopilot 镜像不是 l429609201/dockercopilot，"
-                "不支持直接更新自己。\n\n"
-                "原因：DC 更新任何容器的第一步都是「停掉目标容器」——停掉自己之后，"
-                "就没有进程能接手拉镜像和重建了，所以原版镜像无法自更新。\n\n"
-                "解决办法：把该设备的 DC 容器换成增强版镜像 l429609201/dockercopilot"
-                "（仓库 https://github.com/l429609201/dockerCopilot），"
-                "它内置自更新 helper，换好后本页按钮即可直接使用，无需任何外部组件。")
+                "这台设备的 DockerCopilot 后端不支持内置自更新，无法直接更新自己。\n\n"
+                "原因：更新任何容器的第一步都是「停掉目标容器」——停掉自己后没有进程接手重建。\n\n"
+                "请改用带内置自更新 helper 的后端，或配置外部更新器后再试。")
         return self.__result_page("更新DC容器", False, f"未找到设备[{env}]，请检查插件配置")
 
 
@@ -1122,10 +1118,10 @@ p {{ color: #999; }}
         jwt = self.get_jwt(env["secretKey"])
 
         if self.__is_self_container(container) and not self.__probe_features(env).get("native_selfupdate"):
-            logger.warning(f"DC助手-环境[{env_name}]拒绝更新DC自身容器[{cname}]：原版DC更新第一步就是停自己")
-            return (False, "这是 DockerCopilot 自己的容器，原版 DC 不能更新自己"
-                           "（更新第一步就是停掉目标容器，停自己等于自杀且没人重建）。\n"
-                           "换成带内置自更新的增强版镜像 l429609201/dockercopilot 后再试。",
+            logger.warning(f"DC助手-环境[{env_name}]拒绝更新DC自身容器[{cname}]：后端不支持安全自更新")
+            return (False, "这是 DockerCopilot 自己的容器，当前后端不支持安全自更新。"
+                           "更新第一步会停掉目标容器，停自己后没有进程接手重建。\n"
+                           "请改用带内置自更新 helper 的后端或外部更新器后再试。", 
                     using, "")
         if self.__is_self_container(container):
             logger.info(f"DC助手-环境[{env_name}]更新DC自身容器[{cname}]：该DC带内置helper，交给它自己重建")
@@ -1484,7 +1480,7 @@ p {{ color: #999; }}
                                 'props': {
                                     'model': f'host{i}',
                                     'label': f'服务器地址{i}',
-                                    'placeholder': 'http://192.168.1.x:12712',
+                                    'placeholder': 'http://dc-host.example:12712',
                                     'hide-details': 'auto'
                                 }
                             }
@@ -1921,8 +1917,7 @@ p {{ color: #999; }}
                                                         'props': {
                                                             'type': 'warning',
                                                             'variant': 'tonal',
-                                                            'text': '这里只做「程序二进制热更新」（等价于DC WebUI左下角「更新程序」），不等于更新DC这个容器：容器一旦被重建就会退回镜像里的旧版本。'
-                                                                    '要更新 DC 自身容器，请把该设备的 DC 换成增强版镜像 l429609201/dockercopilot（github.com/l429609201/dockerCopilot），换好后数据页即可一键自更新；本项在无法访问GitHub的网络下通常不可用，建议保持关闭。'
+                                                            'text': '这里只做「程序二进制热更新」（等价于 DC WebUI 左下角「更新程序」），不等于更新 DC 容器。容器重建后会以镜像内版本为准。若要更新 DC 容器，请使用带内置自更新 helper 的后端或配置外部更新器。'
                                                         }
                                                     }
                                                 ]
