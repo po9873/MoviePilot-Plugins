@@ -2,7 +2,7 @@
 
 > **不用 MoviePilot？** 也可以部署独立 Docker 管理面板；镜像地址和仓库地址请以你的实际发布位置为准。
 
-MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.0（V3 版基线）。
+MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.3（定时任务默认值开箱即用、DC 自更新表单修复）。
 
 ## 安装方法（通过 MoviePilot 插件市场）
 
