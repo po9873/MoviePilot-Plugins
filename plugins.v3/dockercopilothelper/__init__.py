@@ -124,6 +124,19 @@ class DockerCopilotHelper(_PluginBase):
                     logger.error(f"DC助手-导入配置解析失败：{str(err)}")
                 config["importjson"] = ""
         if config:
+            # 定时任务默认值：仅当配置里没有该键时补默认并落盘；之后用户可在
+            # 设置里任意修改，或清空关闭对应任务（清空即不注册），不是写死的。
+            _cron_defaults = {
+                "updatecron": "45 * * * *",      # 更新通知：DC 上游每小时 :30 自动查完，:45 读结果
+                "autoupdatecron": "50 * * * *",  # 自动更新：只更新各设备勾选的容器，未勾选则空转
+                "dcupdatecron": "30 5 * * *",    # DC 程序/容器自更新：每天 05:30
+            }
+            _filled = [k for k, v in _cron_defaults.items() if k not in config]
+            for _k in _filled:
+                config[_k] = _cron_defaults[_k]
+            if _filled:
+                self.update_config({k: config[k] for k in _filled})
+                logger.info(f"DC助手-未配置的定时任务已写入默认值: {_filled}，可在设置里修改或清空关闭")
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")
             self._env_raw = {}
@@ -1696,7 +1709,8 @@ p {{ color: #999; }}
                                                         'props': {
                                                             'model': 'updatecron',
                                                             'label': '更新通知周期',
-                                                            'placeholder': '15 8-23/2 * * *'
+                                                            'placeholder': '45 * * * *',
+                                                            'hint': '默认 45 * * * *（DC 上游每小时 :30 自动查完更新后读结果）；可自行修改，留空则关闭更新通知'
                                                         }
                                                     }
                                                 ]
@@ -1736,7 +1750,8 @@ p {{ color: #999; }}
                                                         'props': {
                                                             'model': 'autoupdatecron',
                                                             'label': '自动更新周期',
-                                                            'placeholder': '15 2 * * *'
+                                                            'placeholder': '50 * * * *',
+                                                            'hint': '默认 50 * * * *；只更新各设备勾选的容器，未勾选则空转；留空则关闭自动更新'
                                                         }
                                                     }
                                                 ]
@@ -1892,7 +1907,8 @@ p {{ color: #999; }}
                                                         'props': {
                                                             'model': 'dcupdatecron',
                                                             'label': 'DC程序自更新周期',
-                                                            'placeholder': '0 4 * * 1'
+                                                            'placeholder': '30 5 * * *',
+                                                            'hint': '默认每天 05:30；触发 DC 自身容器/程序自更新；留空则关闭'
                                                         }
                                                     }
                                                 ]
@@ -1945,6 +1961,9 @@ p {{ color: #999; }}
             "autoupdatenotify": True,
             "autoupdatesuccess": True,
             "schedulereport": False,
+            "updatecron": "45 * * * *",
+            "autoupdatecron": "50 * * * *",
+            "dcupdatecron": "30 5 * * *",
             "deleteimages": False,
             "backupsnotify": True,
             "dcupdatenotify": True,
