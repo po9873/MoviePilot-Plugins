@@ -20,7 +20,7 @@ from app.sdk.config import settings
 from app.sdk.logging import logger
 from app.sdk.network import RequestUtils
 from app.plugins import _PluginBase
-from app.schemas import NotificationType
+from app.schemas.message import MessageType
 
 
 class UpdateBody(BaseModel):
@@ -404,15 +404,21 @@ class DockerCopilotHelper(_PluginBase):
                 if not ok:
                     if "已有任务在执行中" in str(msg):
                         # 任务可能由上一轮插件实例、dc-panel 或手工操作创建，DC 不返回其 taskID。
-                        # 登记冷却，不写失败历史、不发失败通知，下一轮先查/等待再决定。
+                        # 仍登记冷却避免重复提交，但必须保留失败通知；旧版本在这里会推送，
+                        # 截图中的「trawl / jackett / IYUUPlus」就是这个分支产生的通知。
                         self.__set_active_update(key, image=used_image, old_image=old_image,
                                                  name=name, busy=True)
                         logger.info(f"DC助手-自动更新-环境[{env_name}]容器[{name}]已有任务，已延后重试")
+                        if self._auto_update_notify:
+                            self.post_message(
+                                mtype=MessageType.Plugin,
+                                title=f"【DC助手-自动更新@{env_name}】",
+                                text=f"更新失败：{msg}")
                         continue
                     logger.error(f"DC助手-自动更新-环境[{env_name}]容器[{name}]失败：{msg}")
                     if self._auto_update_notify:
                         self.post_message(
-                            mtype=NotificationType.Plugin,
+                            mtype=MessageType.Plugin,
                             title=f"【DC助手-自动更新@{env_name}】",
                             text=f"【{name}】\n更新失败：{msg}")
                     continue
@@ -420,7 +426,7 @@ class DockerCopilotHelper(_PluginBase):
                                          old_image=old_image, name=name)
                 if self._auto_update_notify:
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-自动更新@{env_name}】",
                         text=f"【{name}】\n容器更新任务创建成功\n镜像：{used_image}")
                 # 使用独立线程追踪，避免 5 分钟调度线程被大镜像长时间阻塞。
@@ -485,7 +491,7 @@ class DockerCopilotHelper(_PluginBase):
                 is_canceled = bool(detail.get("canceled", report_json.get("canceled", False)))
                 if self._schedule_report:
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-更新进度@{env_name}】",
                         text=f"【{name}】\n进度：{last_msg}"
                     )
@@ -511,7 +517,7 @@ class DockerCopilotHelper(_PluginBase):
         if self._auto_update_success:
             if final == "成功":
                 self.post_message(
-                    mtype=NotificationType.Plugin,
+                    mtype=MessageType.Plugin,
                     title=f"【DC助手-更新成功@{env_name}】",
                     text=(f"【{name}】\n容器已更新完成并运行\n"
                           f"镜像：{image or '(未记录)'}\n"
@@ -519,14 +525,14 @@ class DockerCopilotHelper(_PluginBase):
                           + (f"进度：{last_msg}" if last_msg else "")))
             elif final == "失败":
                 self.post_message(
-                    mtype=NotificationType.Plugin,
+                    mtype=MessageType.Plugin,
                     title=f"【DC助手-更新失败@{env_name}】",
                     text=(f"【{name}】\n更新未完成\n"
                           f"最后进度：{last_msg or '无'}\n"
                           f"镜像：{image or '(未记录)'}"))
             else:
                 self.post_message(
-                    mtype=NotificationType.Plugin,
+                    mtype=MessageType.Plugin,
                     title=f"【DC助手-更新结果未知@{env_name}】",
                     text=(f"【{name}】\n追踪 {limit} 次后仍未拿到终态，可能是镜像较大还在拉取。\n"
                           f"最后进度：{last_msg or '无'}\n"
@@ -587,13 +593,13 @@ class DockerCopilotHelper(_PluginBase):
                 if docker.get("usingImage") and not docker["usingImage"].startswith("sha256:"):
                     # 发送通知
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-更新通知@{env_name}】",
                         text=f"您有容器可以更新啦！\n【{docker['name']}】\n当前镜像:{docker['usingImage']}\n"
                              f"状态:{docker['status']} {docker['runningTime']}\n构建时间：{docker['createTime']}")
                 else:
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-更新通知@{env_name}】",
                         text=f"监测到您有容器TAG不正确\n【{docker['name']}】\n当前镜像:{docker['usingImage']}\n"
                              f"状态:{docker['status']} {docker['runningTime']}\n构建时间：{docker['createTime']}\n"
@@ -624,14 +630,14 @@ class DockerCopilotHelper(_PluginBase):
             if data.get("code") == 200:
                 if self._backups_notify:
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-备份成功@{env_name}】",
                         text=f"容器配置备份成功！")
                 logger.info(f"DC助手-备份-环境[{env_name}]-完成")
             else:
                 if self._backups_notify:
                     self.post_message(
-                        mtype=NotificationType.Plugin,
+                        mtype=MessageType.Plugin,
                         title=f"【DC助手-备份失败@{env_name}】",
                         text=f"容器配置备份失败！\n【失败原因】:{data.get('msg')}")
                 logger.error(f"DC助手-备份-环境[{env_name}]失败 Error code: {data.get('code')}, message: {data.get('msg')}")
@@ -708,7 +714,7 @@ class DockerCopilotHelper(_PluginBase):
             logger.info(f"DC助手-DC程序自更新-环境[{env_name}]更新已触发，服务将短暂重启")
             if self._dc_update_notify:
                 self.post_message(
-                    mtype=NotificationType.Plugin,
+                    mtype=MessageType.Plugin,
                     title=f"【DC助手-程序自更新@{env_name}】",
                     text=f"DockerCopilot 程序自更新已触发\n【{local_ver or '?'} → {remote_ver}】\n服务将短暂重启后自动恢复")
 
@@ -1121,7 +1127,7 @@ p {{ color: #999; }}
             logger.warning(f"DC助手-环境[{env_name}]拒绝更新DC自身容器[{cname}]：后端不支持安全自更新")
             return (False, "这是 DockerCopilot 自己的容器，当前后端不支持安全自更新。"
                            "更新第一步会停掉目标容器，停自己后没有进程接手重建。\n"
-                           "请改用带内置自更新 helper 的后端或外部更新器后再试。", 
+                           "请改用带内置自更新 helper 的后端或外部更新器后再试。",
                     using, "")
         if self.__is_self_container(container):
             logger.info(f"DC助手-环境[{env_name}]更新DC自身容器[{cname}]：该DC带内置helper，交给它自己重建")
