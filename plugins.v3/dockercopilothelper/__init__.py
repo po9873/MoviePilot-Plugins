@@ -873,9 +873,11 @@ class DockerCopilotHelper(_PluginBase):
         try:
             res = requests.post(
                 url,
-                headers={"Authorization": self.get_jwt(env["secretKey"]),
-                         "Content-Type": "application/json"},
-                json={"containerName": cname, "imageNameAndTag": image},
+                # DockerCopilot 的 /api/container/{id}/update 按表单字段解析；
+                # 发 JSON（含 Content-Type: application/json）会返回
+                # `field "imageNameAndTag" is not set`，必须用 form 表单提交。
+                headers={"Authorization": self.get_jwt(env["secretKey"])},
+                data={"containerName": cname, "imageNameAndTag": image},
                 verify=False,
                 timeout=45,
             )
