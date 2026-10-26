@@ -1,21 +1,40 @@
-# MoviePilot-Plugins（V3 · DC助手V3）
+# MoviePilot-Plugins（V3 插件仓库 · po9873）
 
-> **不用 MoviePilot？** 也可以部署独立 Docker 管理面板；镜像地址和仓库地址请以你的实际发布位置为准。
+MoviePilot **V3** 第三方插件仓库，**仅适配 V3**（`system_version >= 3.0.0`），不再维护 V2 版本。
 
-MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（DockerCopilotHelper）**，版本号 3.0.3（定时任务默认值开箱即用、DC 自更新表单修复）。
+## 仓库内的插件
+
+| 插件名 | 插件 ID | 目录 | 当前版本 | 作者 |
+| --- | --- | --- | --- | --- |
+| DC助手V3 | `DockerCopilotHelper` | `plugins.v3/dockercopilothelper` | 3.0.4 | po9873 |
+| CMS通知V3 | `CMSNotify` | `plugins.v3/cmsnotify` | 3.0.0 | po9873 |
+
+> 两个插件名称都带「V3」后缀，作者署名均为 po9873，图标统一放在本仓库 `icons/` 下。
 
 ## 安装方法（通过 MoviePilot 插件市场）
 
 1. 打开 MoviePilot → **设定 → 插件 → 插件市场**
 2. 点「插件市场设置」，在输入框填入本仓库地址并添加：
    ```
-   https://github.com/po9873/MoviePilot-Plugins/
+   https://github.com/po9873/MoviePilot-Plugins
    ```
-3. 保存后回到插件市场，刷新列表，搜索 **DC助手V3** → 安装
+   （地址必须是 `https://github.com/<owner>/<repo>` 形式，不要带 `/tree/main` 等后缀，否则会被静默丢弃）
+3. 保存后回到插件市场，刷新列表，搜索 **DC助手V3** 或 **CMS通知V3** → 安装
 4. 以后有新版本，在插件页点「更新」即可自动升级（版本号以 `package.v3.json` 为准）
 
-> 要求：MoviePilot **V3**（`system_version >= 3.0.0`）。V2 版 MoviePilot 无法安装本插件。
-> 手动安装：下载本仓库 `plugins.v3/dockercopilothelper` 打包为 zip（根目录即插件目录），在 MoviePilot「插件 → 本地安装」导入。
+> 要求：MoviePilot **V3**（`system_version >= 3.0.0`）。V2 版 MoviePilot 无法安装本仓库插件。
+> 若市场里搜不到：先在插件市场点「同步 Wiki」再刷新（本仓库已提交收录申请，合并后即可出现在官方清单里）。
+
+## 本地安装（离线 zip）
+
+插件 → 本地安装/上传，导入 zip 即可，zip 根目录必须是插件目录：
+
+- `DC助手V3-手动安装.zip` → 根目录 `dockercopilothelper/`
+- `CMS通知V3-手动安装.zip` → 根目录 `cmsnotify/`
+
+也可以自行打包：进入 `plugins.v3/` 目录，把对应插件目录打包为 zip（`zip -r xxx.zip dockercopilothelper`）。
+
+---
 
 ## 功能
 
@@ -85,12 +104,40 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 | POST | `/api/v1/plugin/DockerCopilotHelper/upload_config?apikey=` | 导入配置（multipart 上传） |
 | POST | `/api/v1/plugin/DockerCopilotHelper/toggle_expand` | 展开/收起设备容器（保留接口） |
 
-## 安装
+## 安装（DC助手V3）
 
-本地安装：插件管理 → 上传 `DC助手V3-上传安装.zip`（zip 根目录为 `dockercopilothelper/`）。
+本地安装：插件管理 → 上传 `DC助手V3-手动安装.zip`（zip 根目录为 `dockercopilothelper/`）。
 
 仓库安装：在 `PLUGIN_MARKET` 添加本仓库地址，要求 main 分支且目录结构为 `plugins.v3/` + `package.v3.json`。
 
-## 来源
+## 来源（DC助手V3）
 
-参考自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
+参考自 gxterry 的 V1 插件 `dockercopilothelper`，按 MoviePilot V3 规范重写并升级为多设备支持，V3 版由 po9873 维护。DC API 逻辑：本地 HS256 签发 JWT，调用 `/api/containers`、`/api/container/{id}/update`、`/api/progress/{taskID}`、`/api/container/backup`、`/api/images`、`/api/image/{sha}`、`/api/version`、`/api/update`。
+
+---
+
+# CMS通知V3（CMSNotify）
+
+整理完成（115 网盘等）媒体后，通知 CMS 进行增量同步（生成 strm）。V2 原版作者 imaliang，V3 版由 **po9873** 适配维护，版本号从 **3.0.0** 重新计数。
+
+## 功能与配置
+
+- 监听 MoviePilot 的 **整理完成**（`TransferComplete`）与 **刮削完成**（`MetadataScrape`）事件，命中目录后通知 CMS 增量同步
+- **跨机器访问**：CMS 地址可填任意可达地址（局域网 IP、容器网关地址等），不限制本机。
+  - MoviePilot 在 Docker 里、CMS 在宿主机：填 `http://172.17.0.1:9527`
+  - 两台不同机器：填 CMS 所在机器的实际地址，例如 `http://192.168.6.244:9527`
+- 配置项：`cms_domain`（CMS 地址）、`cms_token`（同步 token）、`monitor_dirs`（监控目录，多个换行分隔）、`scrape_metadata`（刮削后也通知）、`only_once`（同路径只通知一次）、`enabled`
+
+## V3 适配要点（相对 V2 原版）
+
+- 导入路径迁移到 `app.sdk.*`（V3 已移除 `app.core` / `app.utils` / `app.log`）
+- 事件注册改为显式 `EventType.TransferComplete` 与 `EventType.MetadataScrape`（V3 不再支持空参数全量捕获）
+- 事件负载改为直接读取 V3 契约对象属性（`TransferInfo` / `FileURI`）
+- 修复 token 错误时仍误报「通知成功」：改为解析响应体 `code` 字段（0 / 200 才算成功）
+- 修复刮削分支取错对象（`fileitem` 而非 `storage`）导致永不命中的 bug
+
+## 安装（CMS通知V3）
+
+本地安装：插件管理 → 上传 `CMS通知V3-手动安装.zip`（zip 根目录为 `cmsnotify/`）。
+
+仓库安装：同上，在市场里搜索 **CMS通知V3**。
