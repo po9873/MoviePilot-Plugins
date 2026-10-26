@@ -1,0 +1,120 @@
+name: Plugin Release
+
+# 本仓库只有 V3 索引，发布单元就是 package.v3.json 里声明的版本。
+# Tag 与产物命名与官方仓一致：PluginID_vX.Y.Z / pluginid_vX.Y.Z.zip，
+# MoviePilot 的 Release 安装链路按这个格式匹配历史版本。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.v3.json'
+      - 'plugins.v3/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_FILE: package.v3.json
+  PLUGIN_ID: DockerCopilotHelper
+  PLUGIN_DIR: plugins.v3/dockercopilothelper
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 校验索引与插件声明一致
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          package_file = Path(os.environ["PACKAGE_FILE"])
+          plugin_dir = Path(os.environ["PLUGIN_DIR"])
+          plugin_id = os.environ["PLUGIN_ID"]
+
+          package = json.loads(package_file.read_text(encoding="utf-8"))
+          meta = package.get(plugin_id)
+          if not isinstance(meta, dict):
+              sys.exit(f"{package_file} 中缺少 {plugin_id} 条目")
+
+          init_file = plugin_dir / "__init__.py"
+          if not init_file.is_file():
+              sys.exit(f"缺少插件源码 {init_file}")
+
+          tree = ast.parse(init_file.read_text(encoding="utf-8"), filename=str(init_file))
+          declared = {}
+          for node in tree.body:
+              if not (isinstance(node, ast.ClassDef) and node.name == plugin_id):
+                  continue
+              for item in node.body:
+                  if not isinstance(item, ast.Assign):
+                      continue
+                  for target in item.targets:
+                      if isinstance(target, ast.Name) and isinstance(item.value, ast.Constant):
+                          declared[target.id] = item.value.value
+
+          errors = []
+          for attr, field in (("plugin_name", "name"), ("plugin_version", "version"), ("plugin_author", "author")):
+              if declared.get(attr) != meta.get(field):
+                  errors.append(f"{field}: 索引={meta.get(field)!r} 源码={declared.get(attr)!r}")
+
+          history = list(meta.get("history") or {})
+          if not history or history[0] != f"v{meta.get('version')}":
+              errors.append(f"history 首项应为 v{meta.get('version')}，实际为 {history[:1]}")
+
+          numbers = [tuple(int(p) for p in key.lstrip("v").split(".")) for key in history if key.lstrip("v").replace(".", "").isdigit()]
+          if numbers != sorted(numbers, reverse=True):
+              errors.append("history 未按语义版本降序排列")
+
+          if errors:
+              print("版本门禁失败：")
+              for error in errors:
+                  print(f"- {error}")
+              sys.exit(1)
+
+          print(f"版本门禁通过：{plugin_id} v{meta['version']}")
+          PY
+
+      - name: 语法编译检查
+        run: python -m compileall -q "$PLUGIN_DIR"
+
+      - name: 打包并创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="$(python -c 'import json,os;print(json.load(open(os.environ["PACKAGE_FILE"],encoding="utf-8"))[os.environ["PLUGIN_ID"]]["version"])')"
+          tag="${PLUGIN_ID}_v${version}"
+          module="$(basename "$PLUGIN_DIR")"
+          asset="${module}_v${version}.zip"
+          notes="$(python -c 'import json,os;m=json.load(open(os.environ["PACKAGE_FILE"],encoding="utf-8"))[os.environ["PLUGIN_ID"]];print(m.get("history",{}).get("v"+str(m["version"])) or "Automated release")')"
+
+          # 包内顶层必须是插件目录本身（dockercopilothelper/__init__.py），
+          # 因此从 plugins.v3 内打包，避免带上 plugins.v3/ 前缀
+          rm -f "$asset"
+          repo_root="$PWD"
+          (cd "$(dirname "$PLUGIN_DIR")" && zip -r "$repo_root/$asset" "$module" \
+            -x "*/__pycache__/*" -x "*.pyc" >/dev/null)
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag 已存在，先删除再重建"
+            gh release delete "$tag" -y
+            git push origin ":refs/tags/$tag" || true
+          fi
+          git tag -d "$tag" >/dev/null 2>&1 || true
+
+          gh release create "$tag" "$asset" --title "$tag" --notes "$notes" --latest --target "$GITHUB_SHA"
+          echo "已发布 $tag -> $asset"
