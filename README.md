@@ -9,7 +9,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
 1. 打开 MoviePilot → **设定 → 插件 → 插件市场**
 2. 点「插件市场设置」，在输入框填入本仓库地址并添加：
    ```
-   https://github.com/<your-user>/MoviePilot-Plugins/
+   https://github.com/po9873/MoviePilot-Plugins/
    ```
 3. 保存后回到插件市场，刷新列表，搜索 **DC助手V3** → 安装
 4. 以后有新版本，在插件页点「更新」即可自动升级（版本号以 `package.v3.json` 为准）
@@ -65,7 +65,7 @@ MoviePilot V3 第三方插件仓库，目前包含一个插件：**DC助手V3（
     "dc_update_cron": "",
     "dc_update_notify": true,
     "interval": 10,
-    "interval_limit": 6,
+    "interval_limit": 6
   }
 }
 ```
