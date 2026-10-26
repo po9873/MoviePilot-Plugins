@@ -20,7 +20,7 @@ class CMSNotify(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/cms.png"
     # 插件版本
-    plugin_version = "0.7"
+    plugin_version = "3.0.0"
     # 插件作者
     plugin_author = "po9873"
     # 适配者
