@@ -5,7 +5,7 @@
     "labels": "Docker,容器,DC",
     "version": "3.0.3",
     "icon": "https://raw.githubusercontent.com/gxterry/MoviePilot-Plugins/main/icons/Docker_Copilot.png",
-    "author": "Plugin Maintainers",
+    "author": "po9873",
     "level": 1,
     "release": true,
     "history": {

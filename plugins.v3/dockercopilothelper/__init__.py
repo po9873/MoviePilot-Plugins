@@ -50,7 +50,7 @@ class DockerCopilotHelper(_PluginBase):
     # 插件版本
     plugin_version = "3.0.3"
     # 插件作者
-    plugin_author = "Plugin Maintainers"
+    plugin_author = "po9873"
     # 作者主页
     author_url = ""
     # 插件配置项ID前缀
