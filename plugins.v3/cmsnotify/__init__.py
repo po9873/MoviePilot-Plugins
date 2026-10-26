@@ -14,17 +14,17 @@ from app.plugins import _PluginBase
 
 class CMSNotify(_PluginBase):
     # 插件名称
-    plugin_name = "CMS通知"
+    plugin_name = "CMS通知V3"
     # 插件描述
     plugin_desc = "整理完成115里的媒体后，通知CMS进行增量同步（strm生成）"
     # 插件图标
-    plugin_icon = "https://raw.githubusercontent.com/imaliang/MoviePilot-Plugins/main/icons/cms.png"
+    plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/cms.png"
     # 插件版本
-    plugin_version = "0.6"
+    plugin_version = "0.7"
     # 插件作者
-    plugin_author = "imaliang"
+    plugin_author = "po9873"
     # 适配者
-    author_url = "https://github.com/imaliang"
+    author_url = "https://github.com/po9873"
     # 插件配置项ID前缀
     plugin_config_prefix = "cmsnotify_"
     # 加载顺序
