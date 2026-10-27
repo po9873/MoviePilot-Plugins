@@ -24,12 +24,13 @@
     "name": "CMS通知V3",
     "description": "整理完成115里的媒体后，通知CMS进行增量同步（strm生成）",
     "labels": "消息通知,媒体库,STRM,CMS",
-    "version": "3.0.0",
+    "version": "3.0.1",
     "icon": "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/cms.png",
     "author": "po9873",
     "level": 1,
     "release": true,
     "history": {
+      "v3.0.1": "配置页移除两条冗余提示（增量同步/strm 说明与跨机器访问说明），仅保留「1-2 分钟等待去重」提示。",
       "v3.0.0": "V3 版首发，版本号自 3.0.0 重新计数（不沿用原 V2 版本序列）。基于 imaliang 的 V2 版「CMS通知」适配，V3 版由 po9873 维护。改动：导入路径迁移到 app.sdk.*（app.core/app.utils/app.log 在 V3 已移除）；事件注册改为显式 EventType.TransferComplete 与 EventType.MetadataScrape；事件负载改为直接读取 V3 契约对象属性；修复 token 错误时仍误报「通知成功」（改为解析响应体 code 字段）；修复刮削分支取 fileitem 对象而非 storage 导致永不命中的 bug；配置页补充跨机器访问说明；插件名称标明 V3，图标迁移至本仓库。"
     },
     "system_version": ">=3.0.0"
