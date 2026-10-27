@@ -6,7 +6,7 @@ MoviePilot **V3** 第三方插件仓库，**仅适配 V3**（`system_version >= 
 
 | 插件名 | 插件 ID | 目录 | 当前版本 | 作者 |
 | --- | --- | --- | --- | --- |
-| DC助手V3 | `DockerCopilotHelper` | `plugins.v3/dockercopilothelper` | 3.0.4 | po9873 |
+| DC助手V3 | `DockerCopilotHelper` | `plugins.v3/dockercopilothelper` | 3.0.5 | po9873 |
 | CMS通知V3 | `CMSNotify` | `plugins.v3/cmsnotify` | 3.0.0 | po9873 |
 
 > 两个插件名称都带「V3」后缀，作者署名均为 po9873，图标统一放在本仓库 `icons/` 下。

@@ -46,9 +46,9 @@ class DockerCopilotHelper(_PluginBase):
     # 插件描述
     plugin_desc = "多台 DockerCopilot 统一管理：更新通知、自动更新、自动备份。"
     # 插件图标
-    plugin_icon = "https://raw.githubusercontent.com/gxterry/MoviePilot-Plugins/main/icons/Docker_Copilot.png"
+    plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/Docker_Copilot.png"
     # 插件版本
-    plugin_version = "3.0.4"
+    plugin_version = "3.0.5"
     # 插件作者
     plugin_author = "po9873"
     # 作者主页
@@ -357,7 +357,8 @@ class DockerCopilotHelper(_PluginBase):
             res = RequestUtils(headers={"Authorization": self.get_jwt(env["secretKey"])}).get_res(
                 url, timeout=10)
             payload = res.json() if res else {}
-            if isinstance(payload, dict) and payload.get("code") == 200:
+            # 成功码兼容 0 / 200（不同 DC 版本约定不同，老版本用 0）
+            if isinstance(payload, dict) and int(payload.get("code") or -1) in (0, 200, 201, 202):
                 detail = payload.get("data") if isinstance(payload.get("data"), dict) else {}
                 done = bool(detail.get("isDone", payload.get("isDone", False)))
                 failed = bool(detail.get("failed", payload.get("failed", False)))
@@ -492,7 +493,8 @@ class DockerCopilotHelper(_PluginBase):
                 logger.error(f"DC助手-更新进度-环境[{env_name}]-{name}-请求异常：{err}")
                 break
 
-            if report_json.get("code") == 200:
+            # 成功码兼容 0 / 200（不同 DC 版本约定不同，老版本用 0）
+            if int(report_json.get("code") or -1) in (0, 200, 201, 202):
                 detail = report_json.get("data") if isinstance(report_json.get("data"), dict) else {}
                 message = str(detail.get("message") or report_json.get("msg") or "")
                 detail_msg = str(detail.get("detailMsg") or message)
@@ -508,11 +510,19 @@ class DockerCopilotHelper(_PluginBase):
                         title=f"【DC助手-更新进度@{env_name}】",
                         text=f"【{name}】\n进度：{last_msg}"
                     )
-                if (is_done and not is_failed and not is_canceled) or "更新成功" in last_msg:
+                if "更新成功" in last_msg:
                     final = "成功"
                     break
-                if (is_failed or is_canceled or "失败" in last_msg or "错误" in last_msg
-                        or "error" in last_msg.lower()):
+                if is_done and not is_failed and not is_canceled:
+                    final = "成功"
+                    break
+                if is_failed or is_canceled:
+                    final = "失败"
+                    break
+                # 拉取镜像过程中 progress message 可能短暂出现「失败/错误/error」（某层重试），
+                # 只有已到终态(is_done)才据字符串收尾，避免在拉取中误判失败并推送客户。
+                if is_done and ("失败" in last_msg or "错误" in last_msg
+                               or "error" in last_msg.lower()):
                     final = "失败"
                     break
             else:
@@ -1188,12 +1198,15 @@ p {{ color: #999; }}
                 msg = "请求DockerCopilot失败"
                 self.__record(env_name, cname, target, False, msg)
                 return False, msg, target, ""
-            if data.get("code") == 200 and data.get("msg") == "success":
-                logger.info(f"DC助手-环境[{env_name}]容器[{cname}]更新任务创建成功（镜像:{target}）")
+            # DockerCopilot 不同版本的成功码约定不一致：部分接口用 200，部分用 0；
+            # msg 文案也不一定是 "success"。只用成功码集合判定，否则会把「其实已创建的
+            # 任务」误判为失败，并不停推送「更新失败」给客户（code=0 的老版本尤甚）。
+            if int(data.get("code") or -1) in (0, 200, 201, 202):
+                logger.info(f"DC助手-环境[{env_name}]容器[{cname}]更新任务创建成功（镜像:{target}，code={data.get('code')}）")
                 self.__record(env_name, cname, target, True, "更新任务已创建")
                 task_id = str((data.get("data") or {}).get("taskID") or "")
                 return True, f"[{env_name}] {cname} 更新任务已创建", target, task_id
-            msg = str(data.get("msg"))
+            msg = f"code={data.get('code')}: {data.get('msg')}"
             self.__record(env_name, cname, target, False, msg)
             return False, f"[{env_name}] {cname}: {msg}", target, ""
         except Exception as err:
