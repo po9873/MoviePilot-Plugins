@@ -48,7 +48,7 @@ class DockerCopilotHelper(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/Docker_Copilot.png"
     # 插件版本
-    plugin_version = "3.0.7"
+    plugin_version = "3.0.8"
     # 插件作者
     plugin_author = "po9873"
     # 作者主页
@@ -104,6 +104,11 @@ class DockerCopilotHelper(_PluginBase):
     _down_cache_ttl = 60
     # 更新结果回查的重试次数（容器重建窗口内容器会短暂消失/未运行）
     _verify_retry = 3
+    # 容器创建时间字段候选：DC 不同版本字段名不一，逐个试探
+    _CREATED_KEYS = ("created", "createdAt", "Created", "create_time", "createTime")
+    # 「未知」后的后台确认期（分钟）：期间拿到确定结果就补发通知，
+    # 与 DC Panel 的 confirm_minutes 行为保持一致
+    _confirm_minutes = 45
     # 最近一次访问各台 DC 的失败原因：host -> 人类可读的原因
     # 用来在配置页/数据页把「连不上」和「真的没有容器」区分开
     _dc_err: Dict[str, str] = {}
@@ -439,16 +444,12 @@ class DockerCopilotHelper(_PluginBase):
                 if not ok:
                     if "已有任务在执行中" in str(msg):
                         # 任务可能由上一轮插件实例、dc-panel 或手工操作创建，DC 不返回其 taskID。
-                        # 仍登记冷却避免重复提交，但必须保留失败通知；旧版本在这里会推送，
-                        # 截图中的「trawl / jackett / IYUUPlus」就是这个分支产生的通知。
+                        # 这不是失败：那个任务正由创建方追踪并会发结果通知，这里静默登记
+                        # 冷却延后重试即可。推「更新失败」纯属误报（旧版本在这里会推送），
+                        # 而且面板和插件同时勾了自动更新时会互相撞车，每轮都推一条。
                         self.__set_active_update(key, image=used_image, old_image=old_image,
                                                  name=name, busy=True)
                         logger.info(f"DC助手-自动更新-环境[{env_name}]容器[{name}]已有任务，已延后重试")
-                        if self._auto_update_notify:
-                            self.post_message(
-                                mtype=MessageType.Plugin,
-                                title=f"【DC助手-自动更新@{env_name}】",
-                                text=f"更新失败：{msg}")
                         continue
                     logger.error(f"DC助手-自动更新-环境[{env_name}]容器[{name}]失败：{msg}")
                     if self._auto_update_notify:
@@ -470,7 +471,8 @@ class DockerCopilotHelper(_PluginBase):
                     threading.Thread(
                         target=self.track_progress,
                         args=(env, self.get_jwt(env["secretKey"]), name, task_id),
-                        kwargs={"old_image": old_image, "image": used_image, "active_key": key},
+                        kwargs={"old_image": old_image, "image": used_image,
+                                "active_key": key, "submitted_ts": time.time()},
                         daemon=True,
                         name=f"dc-helper-{env.get('idx')}-{name}",
                     ).start()
@@ -480,7 +482,8 @@ class DockerCopilotHelper(_PluginBase):
                                              name=name, busy=True)
 
     def track_progress(self, env: Dict[str, str], jwt: str, name: str, task_id: str,
-                       old_image: str = "", image: str = "", active_key: str = ""):
+                       old_image: str = "", image: str = "", active_key: str = "",
+                       submitted_ts: float = 0.0):
         """
         追踪更新进度。
 
@@ -554,7 +557,14 @@ class DockerCopilotHelper(_PluginBase):
 
         if not final:
             # 进度接口没给出终态（DC 更新完会把任务清掉），回查容器实际状态
-            final = self.__verify_updated(env, name, old_image)
+            final = self.__verify_updated(env, name, old_image, submitted_ts=submitted_ts)
+            if final == "成功" and not last_msg:
+                last_msg = "容器已按新镜像重建并运行"
+        if not final:
+            # 与 DC Panel 同步：拿到「未知」不就此收场。转后台持续确认
+            # （前 2 分钟 15 秒一查、之后每分钟一查，最长 45 分钟），
+            # 成功必补发通知，确认期结束才判失败——绝不在拉取中抢跑。
+            final, last_msg = self.__confirm_until_terminal(env, name, submitted_ts)
             if final == "成功" and not last_msg:
                 last_msg = "容器已按新镜像重建并运行"
 
@@ -578,9 +588,9 @@ class DockerCopilotHelper(_PluginBase):
                 self.post_message(
                     mtype=MessageType.Plugin,
                     title=f"【DC助手-更新结果未知@{env_name}】",
-                    text=(f"【{name}】\n追踪 {limit} 次后仍未拿到终态，可能是镜像较大还在拉取。\n"
+                    text=(f"【{name}】\n追踪与后台确认均未拿到明确终态。\n"
                           f"最后进度：{last_msg or '无'}\n"
-                          f"请稍后到 DockerCopilot 页面确认容器状态。"))
+                          f"请到 DockerCopilot 页面确认容器状态。"))
         # 把真实终态回写到历史与面板：成功也要留下记录并同步，不能只发通知
         self.__finish_record(env_name, name, image, final or "未知", last_msg)
         if active_key and final in ("成功", "失败", ""):
@@ -588,7 +598,8 @@ class DockerCopilotHelper(_PluginBase):
         if final != "成功":
             logger.info(f"DC助手-更新进度追踪-环境[{env_name}]-{name}-{final or '未知'}")
 
-    def __verify_updated(self, env: Dict[str, str], name: str, old_image: str) -> str:
+    def __verify_updated(self, env: Dict[str, str], name: str, old_image: str,
+                         submitted_ts: float = 0.0) -> str:
         """
         回查容器真实状态判断更新到底成没成。
 
@@ -596,6 +607,8 @@ class DockerCopilotHelper(_PluginBase):
         这个窗口里容器要么不在列表里、要么处于 created/exited。旧实现只要「找不到」或
         「没在跑」就立刻 return 失败——于是明明拉取成功、容器正在重建，插件却推失败。
         现在改成：短暂重试 + 以 haveUpdate 是否消失为准，确认不了就返回未知（不误报）。
+        另外补一条硬信号：haveUpdate 有缓存滞后（DC 不一定立刻刷新镜像摘要），但容器
+        创建时间晚于提交时间 = DC 已用新镜像重建过它，直接确认成功，让成功通知马上到。
         """
         try:
             attempts = int(self._verify_retry or 3)
@@ -634,6 +647,9 @@ class DockerCopilotHelper(_PluginBase):
             # DC 明确给出「已无可更新」视为更新落地
             if not bool(hit.get("haveUpdate")) and running:
                 return "成功"
+            # haveUpdate 滞后时的即时成功信号：容器在提交更新之后被重建过
+            if bool(hit.get("haveUpdate")) and self.__rebuilt_after(hit, submitted_ts):
+                return "成功"
             if not running:
                 seen_stopped = True
                 continue
@@ -653,6 +669,92 @@ class DockerCopilotHelper(_PluginBase):
         except Exception:
             pass
         return ""
+
+    def __parse_dt(self, v):
+        """宽容解析容器创建时间：epoch 秒/毫秒、ISO 字符串、"YYYY-MM-DD HH:MM:SS"。"""
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, (int, float)):
+            ts = float(v)
+            if ts > 1e12:  # 毫秒时间戳
+                ts /= 1000.0
+            try:
+                return datetime.fromtimestamp(ts)
+            except Exception:
+                return None
+        s = str(v).strip()
+        if not s:
+            return None
+        if s.isdigit():
+            return self.__parse_dt(int(s))
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            pass
+        try:
+            return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+    def __rebuilt_after(self, c: dict, submitted_ts: float) -> bool:
+        """容器创建时间晚于更新提交时间 = 提交后 DC 已用新镜像重建过它。
+        只作为「成功」的确认信号，绝不用于判失败。"""
+        if not submitted_ts:
+            return False
+        for k in self._CREATED_KEYS:
+            dt = self.__parse_dt(c.get(k))
+            if dt is not None:
+                try:
+                    return dt.timestamp() > float(submitted_ts)
+                except Exception:
+                    return False
+        return False
+
+    def __confirm_until_terminal(self, env: Dict[str, str], name: str,
+                                 submitted_ts: float) -> Tuple[str, str]:
+        """
+        「未知」后的后台持续确认（与 DC Panel 的 confirm_watch 行为同步）。
+
+        前 2 分钟 15 秒一查（拉完镜像、重建容器往往就在这几分钟里，成功通知要马上到），
+        之后每分钟一查，最长 _confirm_minutes。拿到确定结果就返回终态：
+        成功必补发；确认期结束容器在跑但 DC 仍持续标记可更新，才判失败；查不到保持未知。
+        """
+        env_name = env.get("name")
+        deadline = time.time() + max(5, int(self._confirm_minutes)) * 60
+        fast_until = time.time() + 120
+        last_state = None  # True=在跑仍可更新 / False=不在跑 / None=读不到
+        while time.time() < deadline:
+            time.sleep(15 if time.time() < fast_until else 60)
+            try:
+                containers = self.get_docker_list(env, use_cache=False)
+            except Exception as err:
+                logger.error(f"DC助手-更新结果确认-环境[{env_name}]-{name}-回查失败：{err}")
+                last_state = None
+                continue
+            hit = None
+            for c in containers or []:
+                if str(c.get("name") or "").strip() == str(name).strip():
+                    hit = c
+                    break
+            if hit is None:
+                last_state = None
+                continue
+            status = str(hit.get("status") or hit.get("state") or "")
+            running = bool(hit.get("running")) or status.lower().startswith("up") \
+                or "running" in status.lower()
+            if running and (not bool(hit.get("haveUpdate"))
+                            or self.__rebuilt_after(hit, submitted_ts)):
+                return "成功", "容器已按新镜像重建并运行（后台确认）"
+            if running:
+                # 在跑但 DC 仍标记可更新：多半是 DC 镜像摘要缓存滞后，继续等
+                last_state = True
+                continue
+            last_state = False
+        if last_state is False:
+            return "失败", "超过确认期容器仍未运行，DockerCopilot 未实际完成更新"
+        if last_state is True:
+            return "", f"超过确认期容器在运行但 DC 仍标记可更新（可能缓存滞后），请到容器页确认"
+        return "", "超过确认期仍未拿到明确结果，请到容器页确认"
 
     def updatable_all(self):
         """
