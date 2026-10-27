@@ -48,7 +48,7 @@ class DockerCopilotHelper(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/Docker_Copilot.png"
     # 插件版本
-    plugin_version = "3.0.5"
+    plugin_version = "3.0.6"
     # 插件作者
     plugin_author = "po9873"
     # 作者主页
@@ -94,6 +94,16 @@ class DockerCopilotHelper(_PluginBase):
     _expanded_env = ""
     # DC 能力探测缓存：host -> (时间戳, 探测结果)，避免数据页每渲染一次都去戳接口
     _feat_cache: Dict[str, Any] = {}
+    # 容器列表缓存：host -> (时间戳, 容器列表)。
+    # 数据页每台设备都要拉一次 /api/containers，设备一多（或有一台关机）
+    # 页面就会转圈几十秒。短时间内重复渲染直接复用，避免每次开页面都全量拉一遍。
+    _ct_cache: Dict[str, Any] = {}
+    _ct_cache_ttl = 30
+    # 不可达设备熔断：host -> (时间戳, 原因)。短时间内不再对同一台重复重试
+    _down_cache: Dict[str, Any] = {}
+    _down_cache_ttl = 60
+    # 更新结果回查的重试次数（容器重建窗口内容器会短暂消失/未运行）
+    _verify_retry = 3
     # 最近一次访问各台 DC 的失败原因：host -> 人类可读的原因
     # 用来在配置页/数据页把「连不上」和「真的没有容器」区分开
     _dc_err: Dict[str, str] = {}
@@ -567,29 +577,69 @@ class DockerCopilotHelper(_PluginBase):
 
     def __verify_updated(self, env: Dict[str, str], name: str, old_image: str) -> str:
         """
-        回查容器状态判断更新到底成没成：
-        - 容器在跑（status 含 Up/running）且镜像已换成新的 -> 成功
-        - 容器在跑但镜像没变 -> 未知（可能没拉到新版本）
-        - 容器消失/没在跑 -> 失败
+        回查容器真实状态判断更新到底成没成。
+
+        为什么以前总是误报「拉取失败」：更新过程中 DC 会先停旧容器、再按新镜像建新容器，
+        这个窗口里容器要么不在列表里、要么处于 created/exited。旧实现只要「找不到」或
+        「没在跑」就立刻 return 失败——于是明明拉取成功、容器正在重建，插件却推失败。
+        现在改成：短暂重试 + 以 haveUpdate 是否消失为准，确认不了就返回未知（不误报）。
         """
         try:
-            for c in self.get_docker_list(env):
-                if c.get("name") != name:
-                    continue
-                status = str(c.get("status") or "")
-                now_image = str(c.get("usingImage") or "")
-                running = bool(c.get("running")) or status.lower().startswith("up") \
-                    or "running" in status.lower()
-                if not running:
-                    return "失败"
-                if old_image and now_image and now_image != old_image:
-                    return "成功"
-                # 镜像名没变（同 tag 覆盖拉取时 usingImage 不变），有 taskID 就视为成功
+            attempts = int(self._verify_retry or 3)
+        except Exception:
+            attempts = 3
+        attempts = max(1, min(attempts, 6))
+        seen_not_found = False
+        seen_stopped = False
+        for attempt in range(attempts):
+            if attempt:
+                time.sleep(int(self._interval or 10) if attempt == 1 else 5)
+            try:
+                containers = self.get_docker_list(env, use_cache=False)
+            except Exception as err:
+                logger.error(f"DC助手-更新结果回查失败：{err}")
+                return ""
+            hit = None
+            for c in containers or []:
+                if str(c.get("name") or "").strip() == str(name).strip():
+                    hit = c
+                    break
+                cid = str(c.get("id") or "").strip()
+                if cid and (cid == str(name).strip()
+                            or cid.startswith(str(name).strip()[:12])
+                            or str(name).strip().startswith(cid[:12])):
+                    hit = c
+                    break
+            if hit is None:
+                # 容器正在重建 / DC 刚重启：不算失败，等下一轮再看
+                seen_not_found = True
+                continue
+            status = str(hit.get("status") or hit.get("state") or "")
+            now_image = str(hit.get("usingImage") or hit.get("createImage") or "")
+            running = bool(hit.get("running")) or status.lower().startswith("up") \
+                or "running" in status.lower()
+            # DC 明确给出「已无可更新」视为更新落地
+            if not bool(hit.get("haveUpdate")) and running:
                 return "成功"
-            return "失败"
-        except Exception as err:
-            logger.error(f"DC助手-更新结果回查失败：{err}")
+            if not running:
+                seen_stopped = True
+                continue
+            if old_image and now_image and now_image != old_image:
+                return "成功"
+            # 同 tag 覆盖拉取时 usingImage 不变；容器在跑且已提交过 taskID，视为成功
+            return "成功"
+        if seen_not_found or seen_stopped:
+            logger.warning(
+                f"DC助手-更新结果回查-环境[{env.get('name')}]-{name}："
+                f"{attempts} 次回查均未确认容器在运行（重建中或 DC 不可读），按未知处理不推送失败")
             return ""
+        try:
+            for c in self.get_docker_list(env, use_cache=False):
+                if str(c.get("name") or "").strip() == str(name).strip():
+                    return "失败" if not bool(c.get("running")) else ""
+        except Exception:
+            pass
+        return ""
 
     def updatable_all(self):
         """
@@ -823,7 +873,9 @@ class DockerCopilotHelper(_PluginBase):
         host = str(env.get("host") or "")
         now = time.time()
         cached = self.__class__._feat_cache.get(host)
-        if cached and not refresh and now - cached[0] < 60:
+        # 能力探测结果几乎不变（有没有 /api/docker/hosts），缓存 10 分钟，
+        # 避免每次开数据页都为每台设备多打两次接口
+        if cached and not refresh and now - cached[0] < 600:
             return dict(cached[1])
 
         feat: Dict[str, Any] = {
@@ -834,7 +886,7 @@ class DockerCopilotHelper(_PluginBase):
         }
         headers = {"Authorization": self.get_jwt(env["secretKey"])}
         try:
-            res = requests.get(f"{host}/api/docker/hosts", headers=headers, verify=False, timeout=6)
+            res = requests.get(f"{host}/api/docker/hosts", headers=headers, verify=False, timeout=4)
             code = int(getattr(res, "status_code", 0) or 0)
             if code == 200:
                 body = res.json()
@@ -847,7 +899,7 @@ class DockerCopilotHelper(_PluginBase):
             logger.debug(f"DC助手-环境[{env['name']}] 探测 /api/docker/hosts 失败：{err}")
 
         try:
-            vres = requests.get(f"{host}/api/version?type=local", headers=headers, verify=False, timeout=6)
+            vres = requests.get(f"{host}/api/version?type=local", headers=headers, verify=False, timeout=4)
             if int(getattr(vres, "status_code", 0) or 0) == 200:
                 vbody = vres.json()
                 vdata = vbody.get("data") if isinstance(vbody, dict) else None
@@ -1285,7 +1337,7 @@ p {{ color: #999; }}
         return (msg[:120] or "未知网络错误")
 
     def __dc_json(self, env: Dict[str, str], path: str, retries: int = 3,
-                  timeout: int = 10) -> Optional[Dict[str, Any]]:
+                  timeout: int = 6) -> Optional[Dict[str, Any]]:
         """
         DC GET 的带重试封装。
         实测 DC 的鉴权中间件会偶发返回 401「未授权」（同一把密钥前后两次一次失败一次成功），
@@ -1295,10 +1347,17 @@ p {{ color: #999; }}
         - 带 timeout。以前不传 timeout，设备断电/端口不通时 requests 会一直挂着，
           配置页要等它等到天荒地老，表现就是「一直转圈」或下拉框空白。
         - 把失败原因记进 _dc_err[host]，让页面能区分「连不上」和「真没容器」。
+        - 熔断：一台设备刚连不上时，后续 short 窗口内不再重复把它拖满重试次数。
+          数据页每台设备都要拉接口，只要有一台关机，整页就会被它拖到几十秒。
         """
         url = "%s%s" % (env["host"], path)
         host = str(env.get("host") or "")
         last_err = ""
+        # 熔断：短时间内已知这台不可达，直接返回上次的原因，不重复空等
+        down = self.__class__._down_cache.get(host)
+        if down and time.time() - down[0] < self.__class__._down_cache_ttl:
+            self._dc_err[host] = down[1]
+            return None
         for attempt in range(max(1, retries)):
             try:
                 try:
@@ -1335,9 +1394,12 @@ p {{ color: #999; }}
         logger.error(f"DC助手-环境[{env['name']}]请求{path}失败（已重试{retries}次，检查secretKey是否正确）")
         if last_err:
             self._dc_err[host] = last_err
+            # 网络层连不上才熔断；密钥错误是配置问题，继续每次尝试以便改完立刻生效
+            if "密钥错误" not in last_err:
+                self.__class__._down_cache[host] = (time.time(), last_err)
         return None
 
-    def get_docker_list(self, env: Dict[str, str]) -> List[Dict[str, Any]]:
+    def get_docker_list(self, env: Dict[str, str], use_cache: bool = True) -> List[Dict[str, Any]]:
         """
         容器列表
 
@@ -1345,8 +1407,15 @@ p {{ color: #999; }}
         而部分重新打包的版本（含增强版）会返回 code=200。这里两个都认，
         否则换个镜像就「一个容器都读不到」，看起来像插件坏了。
         真失败时把 code/msg 记进 _dc_err，页面直接显示，不用去翻日志。
+
+        use_cache：数据页刷新、统计、回查会反复调用本方法；短时间内复用上一次结果，
+        避免每台设备每次都打一次网络请求（设备多或有离线设备时页面会一直转圈）。
         """
         host = str(env.get("host") or "")
+        if use_cache:
+            cached = self.__class__._ct_cache.get(host)
+            if cached and time.time() - cached[0] < self.__class__._ct_cache_ttl:
+                return list(cached[1])
         data = self.__dc_json(env, "/api/containers")
         if not data:
             # 网络层已由 __dc_json 记录原因；这里兜底一个默认文案
@@ -1354,7 +1423,10 @@ p {{ color: #999; }}
             return []
         if data.get("code") in (0, 200):
             self._dc_err.pop(host, None)
-            return data.get("data") or []
+            rows = data.get("data") or []
+            if use_cache:
+                self.__class__._ct_cache[host] = (time.time(), list(rows))
+            return rows
         msg = f"接口返回 code={data.get('code')}, msg={data.get('msg')}"
         logger.error(f"DC助手-环境[{env['name']}]获取容器列表异常 {msg}")
         self._dc_err[host] = msg[:120]
