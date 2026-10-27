@@ -48,7 +48,7 @@ class DockerCopilotHelper(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/Docker_Copilot.png"
     # 插件版本
-    plugin_version = "3.0.6"
+    plugin_version = "3.0.7"
     # 插件作者
     plugin_author = "po9873"
     # 作者主页
@@ -185,8 +185,16 @@ class DockerCopilotHelper(_PluginBase):
             self._backups_notify = config.get("backupsnotify")
             self._dc_update_cron = config.get("dcupdatecron")
             self._dc_update_notify = config.get("dcupdatenotify")
-            self._intervallimit = config.get("intervallimit") or 6
+            # 轮询轮数默认从 6 放宽到 20：拉一个镜像常要几分钟，6 轮（约 1 分钟）
+            # 根本看不到真进度，窗口一结束就判定只会让「其实拉完了」变成失败/未知。
+            self._intervallimit = config.get("intervallimit") or 20
             self._interval = config.get("interval") or 10
+            # 更新结果回查次数（容器重建窗口内容器会短暂消失/未运行）
+            self._verify_retry = config.get("verifyretry") or 6
+            # DC Panel 同步：填了地址和令牌后，插件触发的更新结果会推给面板，
+            # 两边显示同一份状态，不会「这边成功那边失败」。
+            self._panel_url = config.get("panelurl") or ""
+            self._panel_token = config.get("paneltoken") or ""
             saved_active = self.get_data("active_updates")
             with self._active_updates_lock:
                 self._active_updates = dict(saved_active) if isinstance(saved_active, dict) else {}
@@ -316,7 +324,10 @@ class DockerCopilotHelper(_PluginBase):
                 "dcupdatecron": self._dc_update_cron,
                 "dcupdatenotify": self._dc_update_notify,
                 "intervallimit": self._intervallimit,
-                "interval": self._interval
+                "interval": self._interval,
+                "verifyretry": self._verify_retry,
+                "panelurl": self._panel_url,
+                "paneltoken": self._panel_token,
             }
         )
 
@@ -570,10 +581,12 @@ class DockerCopilotHelper(_PluginBase):
                     text=(f"【{name}】\n追踪 {limit} 次后仍未拿到终态，可能是镜像较大还在拉取。\n"
                           f"最后进度：{last_msg or '无'}\n"
                           f"请稍后到 DockerCopilot 页面确认容器状态。"))
-        if active_key and final in ("成功", "失败"):
+        # 把真实终态回写到历史与面板：成功也要留下记录并同步，不能只发通知
+        self.__finish_record(env_name, name, image, final or "未知", last_msg)
+        if active_key and final in ("成功", "失败", ""):
             self.__clear_active_update(active_key)
         if final != "成功":
-            logger.info(f"DC助手-更新进度追踪-环境[{env_name}]-{name}-{final or '超时'}")
+            logger.info(f"DC助手-更新进度追踪-环境[{env_name}]-{name}-{final or '未知'}")
 
     def __verify_updated(self, env: Dict[str, str], name: str, old_image: str) -> str:
         """
@@ -806,6 +819,13 @@ class DockerCopilotHelper(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "触发指定环境指定容器的更新",
+            },
+            {
+                "path": "/sync_records",
+                "endpoint": self.api_sync_records,
+                "methods": ["POST", "GET"],
+                "auth": "apikey",
+                "summary": "与 DC Panel 互相同步更新记录（哪边拿到真实结果就推给另一边）",
             },
             {
                 "path": "/update_dc_container",
@@ -1164,26 +1184,172 @@ p {{ color: #999; }}
         except Exception:
             return []
 
-    def __record(self, env_name: str, container: str, image: str, success: bool, msg: str = ""):
+    def __record(self, env_name: str, container: str, image: str, success: bool,
+                 msg: str = "", result: str = "", push: bool = True):
         """
         记录一次更新，供数据页按天统计
+
+        result 支持「成功/失败/未知」三态：以前只有成功/失败，追踪不到终态时
+        一律记失败，用户看到的全是失败。现在拿不到真实结果就记「未知」。
         """
+        final = result or ("成功" if success else "失败")
+        rec_id = ""
         try:
             records = self.__load_history()
+            rec_id = datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y%m%d%H%M%S") \
+                + "-" + "".join(ch for ch in str(container) if ch.isalnum())[:12]
             records.insert(0, {
+                "id": rec_id,
                 "time": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S"),
                 "date": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d"),
                 "env": env_name,
+                "device": env_name,
                 "container": container,
                 "image": image,
-                "result": "成功" if success else "失败",
+                "result": final,
+                "status": final,
+                "source": "插件（DC助手V3）",
                 "msg": msg or "",
+                "message": msg or "",
             })
             # 只保留最近 2000 条（每条约 200 字节，2000 条不到 0.5 MB）
             # 以前是 500 条，容器多的时候一两个月就把早期记录挤掉了
             self.save_data("update_history", records[:2000])
         except Exception as err:
             logger.error(f"DC助手-写入更新历史失败：{str(err)}")
+        # 同步给 DC Panel：谁触发的都往同一个视图汇总，两边显示才一致
+        if push and rec_id:
+            try:
+                self.__sync_to_panel([{
+                    "id": rec_id,
+                    "time": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S"),
+                    "device": env_name,
+                    "container": container,
+                    "image": image,
+                    "status": final,
+                    "source": "插件（DC助手V3）",
+                    "message": msg or "",
+                }])
+            except Exception as err:
+                logger.debug(f"DC助手-同步到面板失败（不影响更新）：{err}")
+
+    def api_sync_records(self, payload: dict = None) -> dict:
+        """接收 DC Panel 推来的更新记录，或给面板拉取插件侧记录。
+
+        双向同步：面板触发的更新由面板推过来，插件触发的由插件推过去，
+        两边显示同一份状态。只装了其中一个的话，不配置地址即可，互不影响。
+        """
+        try:
+            body = payload if isinstance(payload, dict) else {}
+            incoming = body.get("records")
+            if isinstance(incoming, list) and incoming:
+                records = self.__load_history()
+                by_id = {str(r.get("id")): r for r in records if r.get("id")}
+                added = updated = 0
+                for rec in incoming:
+                    if not isinstance(rec, dict):
+                        continue
+                    rid = str(rec.get("id") or "")
+                    status = str(rec.get("status") or rec.get("result") or "")
+                    norm = {
+                        "id": rid or (datetime.now(tz=pytz.timezone(settings.TZ))
+                                      .strftime("%Y%m%d%H%M%S") + "-p"),
+                        "time": rec.get("time") or datetime.now(
+                            tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S"),
+                        "date": (rec.get("time") or "")[:10] or datetime.now(
+                            tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d"),
+                        "env": rec.get("device") or rec.get("env") or "",
+                        "device": rec.get("device") or rec.get("env") or "",
+                        "container": rec.get("container") or "",
+                        "image": rec.get("image") or "",
+                        "result": status,
+                        "status": status,
+                        "source": rec.get("source") or "DC Panel 同步",
+                        "msg": rec.get("message") or rec.get("msg") or "",
+                        "message": rec.get("message") or rec.get("msg") or "",
+                    }
+                    if norm["id"] in by_id:
+                        old = by_id[norm["id"]]
+                        # 已终态的不被「进行中/未确认」覆盖：谁拿到真结果谁说了算
+                        if str(old.get("result") or "") in ("进行中", "未确认", "等待中", ""):
+                            old.update(norm)
+                            updated += 1
+                    else:
+                        records.insert(0, norm)
+                        added += 1
+                records.sort(key=lambda r: str(r.get("time") or ""), reverse=True)
+                self.save_data("update_history", records[:2000])
+                return {"success": True, "added": added, "updated": updated}
+            # 没有 records 就是拉取模式
+            records = self.__load_history()
+            return {"success": True, "records": records[:300]}
+        except Exception as err:
+            logger.error(f"DC助手-同步记录失败：{err}")
+            return {"success": False, "message": str(err)}
+
+    def __finish_record(self, env_name: str, container: str, image: str, final: str, msg: str = ""):
+        """把「提交更新」那条记录改写为真实终态（成功/失败/未知），并同步给面板。
+
+        以前只记「更新任务已创建」，真正的结果只在通知里；追踪不到终态时又因为
+        只有成功/失败两态而被记成失败——用户看到的全是失败，成功反而没有记录。
+        """
+        final = final or "未知"
+        try:
+            records = self.__load_history()
+            for r in records:
+                if str(r.get("env") or r.get("device") or "") == str(env_name) \
+                        and str(r.get("container") or "") == str(container) \
+                        and str(r.get("result") or r.get("status") or "") in ("成功", "未知", "进行中"):
+                    r["result"] = final
+                    r["status"] = final
+                    r["msg"] = msg or r.get("msg") or ""
+                    r["message"] = r["msg"]
+                    break
+            else:
+                records.insert(0, {
+                    "id": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y%m%d%H%M%S")
+                          + "-" + "".join(ch for ch in str(container) if ch.isalnum())[:12],
+                    "time": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S"),
+                    "date": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d"),
+                    "env": env_name, "device": env_name,
+                    "container": container, "image": image,
+                    "result": final, "status": final,
+                    "source": "插件（DC助手V3）", "msg": msg, "message": msg,
+                })
+            self.save_data("update_history", records[:2000])
+        except Exception as err:
+            logger.error(f"DC助手-回写更新结果失败：{str(err)}")
+        try:
+            self.__sync_to_panel([{
+                "id": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y%m%d%H%M%S")
+                      + "-" + "".join(ch for ch in str(container) if ch.isalnum())[:12],
+                "time": datetime.now(tz=pytz.timezone(settings.TZ)).strftime("%Y-%m-%d %H:%M:%S"),
+                "device": env_name, "container": container, "image": image,
+                "status": final, "source": "插件（DC助手V3）", "message": msg,
+            }])
+        except Exception as err:
+            logger.debug(f"DC助手-同步终态到面板失败（不影响更新）：{err}")
+
+    def __sync_to_panel(self, records: list):
+        """把插件侧的结果推给 DC Panel，避免两边各记一份、状态不一致。"""
+        url = str(getattr(self, "_panel_url", "") or "").strip().rstrip("/")
+        token = str(getattr(self, "_panel_token", "") or "").strip()
+        if not url or not token:
+            return False
+        try:
+            res = requests.post(
+                f"{url}/api/sync/records",
+                json={"records": records},
+                headers={"X-Sync-Token": token, "Content-Type": "application/json"},
+                timeout=8,
+            )
+            ok = 200 <= int(getattr(res, "status_code", 0) or 0) < 300
+            if not ok:
+                logger.warning(f"DC助手-同步到面板返回 {getattr(res, 'status_code', '?')}")
+            return ok
+        except Exception as err:
+            logger.debug(f"DC助手-同步到面板异常：{err}")
+            return False
 
     # ---------------- 更新执行（含TAG异常自动重拉） ----------------
 
@@ -1865,8 +2031,53 @@ p {{ color: #999; }}
                                                         'props': {
                                                             'model': 'intervallimit',
                                                             'label': '检查次数',
+                                                            'placeholder': '20',
+                                                            'hint': '达到次数后放弃追踪；拉大镜像建议 ≥20（6 次只有约 1 分钟，看不到真进度）'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'VCol',
+                                                'props': {'cols': 12, 'md': 3},
+                                                'content': [
+                                                    {
+                                                        'component': 'VTextField',
+                                                        'props': {
+                                                            'model': 'verifyretry',
+                                                            'label': '结果回查次数',
                                                             'placeholder': '6',
-                                                            'hint': '达到次数后放弃追踪'
+                                                            'hint': '追踪结束后回查容器真实状态的次数；容器重建窗口内会短暂消失/未运行，次数太少会误判失败'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'VCol',
+                                                'props': {'cols': 12, 'md': 6},
+                                                'content': [
+                                                    {
+                                                        'component': 'VTextField',
+                                                        'props': {
+                                                            'model': 'panelurl',
+                                                            'label': 'DC Panel 地址（双向同步）',
+                                                            'placeholder': 'http://192.168.6.244:9527',
+                                                            'hint': '填了并把下面的令牌填上，插件触发的更新结果会同步到面板；只装了其中一个就不用填'
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                'component': 'VCol',
+                                                'props': {'cols': 12, 'md': 6},
+                                                'content': [
+                                                    {
+                                                        'component': 'VTextField',
+                                                        'props': {
+                                                            'model': 'paneltoken',
+                                                            'label': 'DC Panel 同步令牌',
+                                                            'placeholder': '面板「同步令牌」里复制',
+                                                            'hint': '在 DC Panel 里查看：设置 → 同步令牌'
                                                         }
                                                     }
                                                 ]
@@ -2053,7 +2264,10 @@ p {{ color: #999; }}
             "backupsnotify": True,
             "dcupdatenotify": True,
             "interval": 10,
-            "intervallimit": 6
+            "intervallimit": 20,
+            "verifyretry": 6,
+            "panelurl": "",
+            "paneltoken": ""
         }
 
     # ---------------- 数据页 HTML 渲染（纯原生 HTML，不依赖前端事件绑定） ----------------
