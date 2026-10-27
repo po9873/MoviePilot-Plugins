@@ -20,7 +20,7 @@ class CMSNotify(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/po9873/MoviePilot-Plugins/main/icons/cms.png"
     # 插件版本
-    plugin_version = "3.0.0"
+    plugin_version = "3.0.1"
     # 插件作者
     plugin_author = "po9873"
     # 适配者
@@ -172,48 +172,6 @@ class CMSNotify(_PluginBase):
                                         'props': {
                                             'model': 'cms_api_token',
                                             'label': 'CMS_API_TOKEN'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VAlert',
-                                        'props': {
-                                            'type': 'info',
-                                            'variant': 'tonal',
-                                            'text': '当MP整理或刮削好115里的媒体后，会通知CMS进行增量同步（strm生成）；CMS版本需要0.3.5.11及以上：https://wiki.cmscc.cc'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VAlert',
-                                        'props': {
-                                            'type': 'success',
-                                            'variant': 'tonal',
-                                            'text': '支持跨机器访问：CMS地址填写任意可达地址即可（如 http://192.168.6.244:9527）。默认值 172.17.0.1 仅适用于 CMS 与 MoviePilot 在同一台宿主机上的情况；若 CMS 部署在别的机器，请改为该机器的局域网 IP 并确保端口可连通。'
                                         }
                                     }
                                 ]
